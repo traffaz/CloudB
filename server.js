@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { Pool } = require("pg");
+const sql = require("mssql");
 
 const app = express();
 app.use(cors());
@@ -8,76 +8,40 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-const pool = new Pool({
-  host: process.env.PGHOST,
-  port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: true } : false
-});
+// ✅ MUST be set in Azure App Settings
+// DB_SERVER must be like: "myserver.database.windows.net"  (no https, no port)
+const dbConfig = {
+  server: process.env.DB_SERVER,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  options: {
+    encrypt: true,
+    trustServerCertificate: false
+  },
+  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 }
+};
 
-// GET health
-app.get("/api/health", (req, res) => {
-  res.json({ ok: true });
-});
-
-// GET all items
-app.get("/api/items", async (req, res) => {
-  try {
-    const r = await pool.query("SELECT * FROM public.items ORDER BY id DESC LIMIT 100");
-    res.json({ count: r.rows.length, data: r.rows });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+function assertEnv() {
+  const required = ["DB_SERVER", "DB_NAME", "DB_USER", "DB_PASSWORD"];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`Missing env vars: ${missing.join(", ")}`);
   }
-});
-
-// POST create item
-app.post("/api/items", async (req, res) => {
-  try {
-    const { name } = req.body;
-
-    if (!name) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing field: name"
-      });
-    }
-
-    const query = `
-      INSERT INTO public.items (name)
-      VALUES ($1)
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, [name]);
-
-    res.status(201).json({
-      ok: true,
-      data: result.rows[0]
-    });
-
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+}
 
 let pool;
 async function getPool() {
   if (pool) return pool;
+  assertEnv();
   pool = await sql.connect(dbConfig);
   return pool;
 }
 
-app.get("/api/health", async (req, res) => {
+app.get("/api/health", (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
-// Simple DB connectivity check
 app.get("/api/db/ping", async (req, res) => {
   try {
     const p = await getPool();
@@ -88,12 +52,41 @@ app.get("/api/db/ping", async (req, res) => {
   }
 });
 
-// Example: read from a table (change dbo.Items to your table)
+// ✅ GET items (table: dbo.Items)
 app.get("/api/items", async (req, res) => {
   try {
     const p = await getPool();
-    const r = await p.request().query("SELECT TOP (100) * FROM dbo.Items ORDER BY 1 DESC");
+    const r = await p
+      .request()
+      .query("SELECT TOP (100) id, name, created_at FROM dbo.Items ORDER BY id DESC");
+
     res.json({ count: r.recordset.length, data: r.recordset });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ✅ POST items (insert into dbo.Items)
+app.post("/api/items", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ ok: false, error: "Missing or invalid field: name" });
+    }
+
+    const p = await getPool();
+
+    const r = await p
+      .request()
+      .input("name", sql.NVarChar(255), name)
+      .query(`
+        INSERT INTO dbo.Items (name)
+        OUTPUT INSERTED.id, INSERTED.name, INSERTED.created_at
+        VALUES (@name)
+      `);
+
+    res.status(201).json({ ok: true, data: r.recordset?.[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

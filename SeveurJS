@@ -5,7 +5,7 @@ const cors = require("cors");
 const app = express();
 
 // Azure App Service fournit le port via process.env.PORT
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80 ;
 
 // CORS: en prod tu peux restreindre via FRONTEND_ORIGIN
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "*";

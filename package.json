@@ -1,5 +1,5 @@
 {
-  "name": "azure-sql-private-api",
+  "name": "azure-sql-api",
   "version": "1.0.0",
   "main": "server.js",
   "type": "commonjs",

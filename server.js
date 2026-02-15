@@ -1,86 +1,58 @@
-// server.js (Node LTS 22 - Azure Web App friendly)
 const express = require("express");
 const cors = require("cors");
+const sql = require("mssql");
 
 const app = express();
-
-// Azure App Service fournit le port via process.env.PORT
-const PORT = process.env.PORT || 80 ;
-
-// CORS: en prod tu peux restreindre via FRONTEND_ORIGIN
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "*";
-app.use(
-  cors({
-    origin: FRONTEND_ORIGIN === "*" ? true : FRONTEND_ORIGIN,
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 
-// --- Fake data (à remplacer par DB / API externe) ---
-const items = [
-  { id: 1, name: "Alpha", createdAt: new Date().toISOString() },
-  { id: 2, name: "Beta", createdAt: new Date().toISOString() },
-  { id: 3, name: "Gamma", createdAt: new Date().toISOString() },
-];
+const PORT = process.env.PORT || 3000;
 
-// --- Routes ---
-app.get("/", (req, res) => {
-  res.json({
-    service: "backend",
-    status: "ok",
-    routes: ["/api/health", "/api/items", "/api/items/:id", "/api/version"],
-  });
-});
+// Use the standard server name (ex: myserver.database.windows.net).
+// With Private Endpoint + Private DNS zone, it resolves to private IP automatically.
+const dbConfig = {
+  server: process.env.DB_SERVER,      // e.g. "myserver.database.windows.net"
+  database: process.env.DB_NAME,      // e.g. "mydb"
+  user: process.env.DB_USER,          // e.g. "sqladmin"
+  password: process.env.DB_PASSWORD,  // e.g. "*****"
+  options: {
+    encrypt: true,
+    trustServerCertificate: false
+  },
+  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 }
+};
 
-// Healthcheck (utile pour tester rapidement sur Azure)
-app.get("/api/health", (req, res) => {
+let pool;
+async function getPool() {
+  if (pool) return pool;
+  pool = await sql.connect(dbConfig);
+  return pool;
+}
+
+app.get("/api/health", async (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
-// Version/runtime (utile pour vérifier Node 22)
-app.get("/api/version", (req, res) => {
-  res.json({
-    node: process.version,
-    platform: process.platform,
-    env: process.env.NODE_ENV || "development",
-  });
-});
-
-// GET list
-app.get("/api/items", (req, res) => {
-  // optionnel: filtre ?q=...
-  const q = (req.query.q || "").toString().toLowerCase().trim();
-  const filtered = q
-    ? items.filter((x) => x.name.toLowerCase().includes(q))
-    : items;
-
-  res.json({
-    count: filtered.length,
-    data: filtered,
-  });
-});
-
-// GET by id
-app.get("/api/items/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const item = items.find((x) => x.id === id);
-
-  if (!item) {
-    return res.status(404).json({ error: "NOT_FOUND", message: "Item not found" });
+// Simple DB connectivity check
+app.get("/api/db/ping", async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query("SELECT 1 AS ok");
+    res.json({ ok: true, result: r.recordset?.[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
-
-  res.json(item);
 });
 
-// 404 fallback
-app.use((req, res) => {
-  res.status(404).json({
-    error: "NOT_FOUND",
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-  });
+// Example: read from a table (change dbo.Items to your table)
+app.get("/api/items", async (req, res) => {
+  try {
+    const p = await getPool();
+    const r = await p.request().query("SELECT TOP (100) * FROM dbo.Items ORDER BY 1 DESC");
+    res.json({ count: r.recordset.length, data: r.recordset });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`API listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Listening on ${PORT}`));

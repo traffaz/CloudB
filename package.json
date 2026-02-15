@@ -1,6 +1,7 @@
 {
-  "name": "azure-sql-api",
+  "name": "azure-node22-rest-api",
   "version": "1.0.0",
+  "description": "REST API (no DB) for Azure Web App - Node LTS 22",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -12,7 +13,6 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "mssql": "^12.2.0"
+    "express": "^4.19.2"
   }
 }

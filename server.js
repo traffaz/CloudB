@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const sql = require("mssql");
+const { Pool } = require("pg");
 
 const app = express();
 app.use(cors());
@@ -8,19 +8,63 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Use the standard server name (ex: myserver.database.windows.net).
-// With Private Endpoint + Private DNS zone, it resolves to private IP automatically.
-const dbConfig = {
-  server: process.env.DB_SERVER,      // e.g. "myserver.database.windows.net"
-  database: process.env.DB_NAME,      // e.g. "mydb"
-  user: process.env.DB_USER,          // e.g. "sqladmin"
-  password: process.env.DB_PASSWORD,  // e.g. "*****"
-  options: {
-    encrypt: true,
-    trustServerCertificate: false
-  },
-  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 }
-};
+const pool = new Pool({
+  host: process.env.PGHOST,
+  port: Number(process.env.PGPORT || 5432),
+  database: process.env.PGDATABASE,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: true } : false
+});
+
+// GET health
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true });
+});
+
+// GET all items
+app.get("/api/items", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT * FROM public.items ORDER BY id DESC LIMIT 100");
+    res.json({ count: r.rows.length, data: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST create item
+app.post("/api/items", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing field: name"
+      });
+    }
+
+    const query = `
+      INSERT INTO public.items (name)
+      VALUES ($1)
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, [name]);
+
+    res.status(201).json({
+      ok: true,
+      data: result.rows[0]
+    });
+
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 let pool;
 async function getPool() {

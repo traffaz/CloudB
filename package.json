@@ -1,0 +1,18 @@
+{
+  "name": "azure-node22-backend",
+  "version": "1.0.0",
+  "description": "Simple REST API for Azure Web App (Node LTS 22)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

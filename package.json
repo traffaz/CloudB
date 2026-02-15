@@ -1,7 +1,6 @@
 {
-  "name": "azure-node22-backend",
+  "name": "private-endpoint-mssql-api",
   "version": "1.0.0",
-  "description": "Simple REST API for Azure Web App (Node LTS 22)",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -13,6 +12,7 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "mssql": "^12.2.0"
   }
 }
